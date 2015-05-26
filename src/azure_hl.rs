@@ -5,7 +5,9 @@
 //! High-level bindings to Azure.
 
 pub use AzColor as Color;
-use azure::{AZ_FILTER_TYPE_COLOR_MATRIX};
+use azure::{AZ_CAP_BUTT, AZ_JOIN_MITER_OR_BEVEL, AZ_FILTER_TYPE_COLOR_MATRIX};
+use azure::{AZ_FILTER_TYPE_DISCRETE_TRANSFER, AZ_IN_DISCRETE_TRANSFER_IN};//FIXME: order this by letter order
+use azure::{AZ_FILTER_TYPE_TRANSFORM, AZ_IN_TRANSFORM_IN, AZ_ATT_TRANSFORM_MATRIX,  struct__AzMatrix};//FIXME: order this by letter order
 use azure::{AZ_FILTER_TYPE_FLOOD, AZ_FILTER_TYPE_GAUSSIAN_BLUR, AZ_FILTER_TYPE_LINEAR_TRANSFER};
 use azure::{AZ_FILTER_TYPE_TABLE_TRANSFER, AZ_IN_COLOR_MATRIX_IN, AZ_IN_COMPOSITE_IN};
 use azure::{AZ_IN_FLOOD_IN, AZ_IN_GAUSSIAN_BLUR_IN, AZ_IN_LINEAR_TRANSFER_IN};
@@ -18,7 +20,7 @@ use azure::{AZ_ATT_LINEAR_TRANSFER_INTERCEPT_A, AZ_ATT_TABLE_TRANSFER_TABLE_R};
 use azure::{AZ_ATT_TABLE_TRANSFER_TABLE_G, AZ_ATT_TABLE_TRANSFER_TABLE_B};
 use azure::{AZ_ATT_TABLE_TRANSFER_TABLE_A, AZ_ATT_TRANSFER_DISABLE_R};
 use azure::{AZ_ATT_TRANSFER_DISABLE_G, AZ_ATT_TRANSFER_DISABLE_B};
-use azure::{AZ_ATT_TRANSFER_DISABLE_A};
+use azure::{AZ_ATT_TRANSFER_DISABLE_A, AZ_ATT_COMPOSITE_COMPOSITE_OPERATOR};
 use azure::{AzPoint, AzRect, AzFloat, AzIntSize, AzColor, AzColorPatternRef, AzGradientStopsRef};
 use azure::{AzStrokeOptions, AzDrawOptions, AzSurfaceFormat, AzFilter, AzDrawSurfaceOptions};
 use azure::{AzBackendType, AzDrawTargetRef, AzSourceSurfaceRef, AzDataSourceSurfaceRef};
@@ -49,8 +51,8 @@ use azure::{AzDrawTargetDrawSurfaceWithShadow, AzDrawTargetCreateShadowDrawTarge
 use azure::{AzDrawTargetCreateSimilarDrawTarget, AzDrawTargetGetTransform};
 use azure::{AzFilterNodeSetSourceSurfaceInput, AzReleaseFilterNode, AzDrawTargetCreateFilter};
 use azure::{AzFilterNodeSetColorAttribute, AzFilterNodeSetFloatAttribute};
-use azure::{AzFilterNodeSetMatrix5x4Attribute, AzFilterNodeSetFilterNodeInput};
-use azure::{AzFilterNodeSetFloatArrayAttribute, AzFilterNodeSetBoolAttribute};
+use azure::{AzFilterNodeSetMatrixAttribute, AzFilterNodeSetMatrix5x4Attribute, AzFilterNodeSetFilterNodeInput};
+use azure::{AzFilterNodeSetFloatArrayAttribute, AzFilterNodeSetBoolAttribute, AzFilterNodeSetUintAttribute};
 use azure::{AzDrawTargetDrawFilter, AzFilterNodeRef, AzFilterType};
 use azure::{AzPathBuilderBezierTo, AzPathBuilderQuadraticBezierTo};
 use azure::{AzPathBuilderCurrentPoint, AzPathBuilderClose};
@@ -1321,10 +1323,13 @@ impl FilterNode {
         attribute.set(self)
     }
 }
+pub struct TransformInput;
 
 pub struct ColorMatrixInput;
 
 pub struct CompositeInput;
+
+pub struct DiscreteTransferInput;
 
 pub struct FloodFilterInput;
 
@@ -1336,6 +1341,12 @@ pub struct TableTransferInput;
 
 pub trait FilterInputIndex {
     fn azure_index(&self) -> u32;
+}
+
+impl FilterInputIndex for TransformInput{
+    fn azure_index(&self) -> u32 {
+        AZ_IN_TRANSFORM_IN
+    }
 }
 
 impl FilterInputIndex for ColorMatrixInput {
@@ -1368,6 +1379,12 @@ impl FilterInputIndex for LinearTransferInput {
     }
 }
 
+impl FilterInputIndex for DiscreteTransferInput {
+    fn azure_index(&self) -> u32 {
+        AZ_IN_DISCRETE_TRANSFER_IN
+    }
+}
+
 impl FilterInputIndex for TableTransferInput {
     fn azure_index(&self) -> u32 {
         AZ_IN_TABLE_TRANSFER_IN
@@ -1378,8 +1395,35 @@ pub trait FilterAttribute {
     fn set(&self, filter_node: &FilterNode);
 }
 
+pub enum CompositeOperator {
+    CompositeOperatorOver,
+    CompositeOperatorIn,
+    CompositeOperatorOut,
+    CompositeOperatorAtop,
+    CompositeOperatorXor,
+}
+
+pub enum CompositeAttribute {
+    CompositeOperator(CompositeOperator),
+}
+
+pub enum TransformAttribute {
+    Matrix(Matrix),
+}
+
 pub enum ColorMatrixAttribute {
     Matrix(Matrix5x4),
+}
+
+pub enum DiscreteTransferAttribute<'a> {
+    DisableR(bool),
+    DisableG(bool),
+    DisableB(bool),
+    DisableA(bool),
+    TableR(&'a [AzFloat]),
+    TableG(&'a [AzFloat]),
+    TableB(&'a [AzFloat]),
+    TableA(&'a [AzFloat]),
 }
 
 pub enum FloodAttribute {
@@ -1416,6 +1460,28 @@ pub enum TableTransferAttribute<'a> {
     TableA(&'a [AzFloat]),
 }
 
+impl FilterAttribute for CompositeAttribute {
+    fn set(&self, filter_node: &FilterNode) {
+        let CompositeAttribute::CompositeOperator(value) = *self;
+        unsafe {
+            AzFilterNodeSetUintAttribute(filter_node.azure_filter_node,
+                                         AZ_ATT_COMPOSITE_COMPOSITE_OPERATOR,
+                                         value as u32);
+        }
+    }
+}
+
+impl FilterAttribute for TransformAttribute {
+    fn set(&self, filter_node: &FilterNode) {
+        let TransformAttribute::Matrix(ref value) = *self;
+        unsafe {
+            AzFilterNodeSetMatrixAttribute(filter_node.azure_filter_node,
+                                              AZ_ATT_TRANSFORM_MATRIX,
+                                              &value.as_azure_matrix())
+        }
+    }
+}
+
 impl FilterAttribute for ColorMatrixAttribute {
     fn set(&self, filter_node: &FilterNode) {
         let ColorMatrixAttribute::Matrix(ref value) = *self;
@@ -1423,6 +1489,59 @@ impl FilterAttribute for ColorMatrixAttribute {
             AzFilterNodeSetMatrix5x4Attribute(filter_node.azure_filter_node,
                                               AZ_ATT_COLOR_MATRIX_MATRIX,
                                               &value.as_azure_matrix_5x4())
+        }
+    }
+}
+
+impl<'a> FilterAttribute for DiscreteTransferAttribute<'a> {
+    fn set(&self, filter_node: &FilterNode) {
+        unsafe {
+            match *self {
+                DiscreteTransferAttribute::DisableR(value) => {
+                    AzFilterNodeSetBoolAttribute(filter_node.azure_filter_node,
+                                                 AZ_ATT_TRANSFER_DISABLE_R,
+                                                 value)
+                }
+                DiscreteTransferAttribute::DisableG(value) => {
+                    AzFilterNodeSetBoolAttribute(filter_node.azure_filter_node,
+                                                 AZ_ATT_TRANSFER_DISABLE_G,
+                                                 value)
+                }
+                DiscreteTransferAttribute::DisableB(value) => {
+                    AzFilterNodeSetBoolAttribute(filter_node.azure_filter_node,
+                                                 AZ_ATT_TRANSFER_DISABLE_B,
+                                                 value)
+                }
+                DiscreteTransferAttribute::DisableA(value) => {
+                    AzFilterNodeSetBoolAttribute(filter_node.azure_filter_node,
+                                                 AZ_ATT_TRANSFER_DISABLE_A,
+                                                 value)
+                }
+                DiscreteTransferAttribute::TableR(value) => {
+                    AzFilterNodeSetFloatArrayAttribute(filter_node.azure_filter_node,
+                                                       AZ_ATT_TABLE_TRANSFER_TABLE_R,
+                                                       value.as_ptr(),
+                                                       value.len() as u32)
+                }
+                DiscreteTransferAttribute::TableG(value) => {
+                    AzFilterNodeSetFloatArrayAttribute(filter_node.azure_filter_node,
+                                                       AZ_ATT_TABLE_TRANSFER_TABLE_G,
+                                                       value.as_ptr(),
+                                                       value.len() as u32)
+                }
+                DiscreteTransferAttribute::TableB(value) => {
+                    AzFilterNodeSetFloatArrayAttribute(filter_node.azure_filter_node,
+                                                       AZ_ATT_TABLE_TRANSFER_TABLE_B,
+                                                       value.as_ptr(),
+                                                       value.len() as u32)
+                }
+                DiscreteTransferAttribute::TableA(value) => {
+                    AzFilterNodeSetFloatArrayAttribute(filter_node.azure_filter_node,
+                                                       AZ_ATT_TABLE_TRANSFER_TABLE_A,
+                                                       value.as_ptr(),
+                                                       value.len() as u32)
+                }
+            }
         }
     }
 }
@@ -1572,8 +1691,10 @@ impl<'a> FilterAttribute for TableTransferAttribute<'a> {
 }
 
 pub enum FilterType {
+    Transform,
     ColorMatrix,
     Composite,
+    DiscreteTransfer,
     Flood,
     GaussianBlur,
     LinearTransfer,
@@ -1583,8 +1704,10 @@ pub enum FilterType {
 impl FilterType {
     pub fn as_azure_filter_type(self) -> AzFilterType {
         match self {
+            FilterType::Transform => AZ_FILTER_TYPE_TRANSFORM,
             FilterType::ColorMatrix => AZ_FILTER_TYPE_COLOR_MATRIX,
             FilterType::Composite => AZ_FILTER_TYPE_COMPOSITE,
+            FilterType::DiscreteTransfer => AZ_FILTER_TYPE_DISCRETE_TRANSFER,
             FilterType::Flood => AZ_FILTER_TYPE_FLOOD,
             FilterType::GaussianBlur => AZ_FILTER_TYPE_GAUSSIAN_BLUR,
             FilterType::LinearTransfer => AZ_FILTER_TYPE_LINEAR_TRANSFER,
@@ -1633,6 +1756,24 @@ impl Matrix5x4 {
             _31: self.m31, _32: self.m32, _33: self.m33, _34: self.m34,
             _41: self.m41, _42: self.m42, _43: self.m43, _44: self.m44,
             _51: self.m51, _52: self.m52, _53: self.m53, _54: self.m54,
+        }
+    }
+}
+
+#[derive(PartialEq, Clone, Debug)]
+pub struct Matrix {
+    pub m11: AzFloat, pub m12: AzFloat, 
+    pub m21: AzFloat, pub m22: AzFloat,
+    pub m31: AzFloat, pub m32: AzFloat,
+}
+
+impl Matrix {
+    #[inline]
+    pub fn as_azure_matrix(&self) -> struct__AzMatrix {
+        struct__AzMatrix {
+            _11: self.m11, _12: self.m12, 
+            _21: self.m21, _22: self.m22, 
+            _31: self.m31, _32: self.m32, 
         }
     }
 }

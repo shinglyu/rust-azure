@@ -481,10 +481,14 @@ void AzFilterNodeSetSourceSurfaceInput(AzFilterNodeRef aFilter,
 void AzFilterNodeSetFilterNodeInput(AzFilterNodeRef aFilter,
                                     uint32_t aIndex,
                                     AzFilterNodeRef aInputFilter);
+void AzFilterNodeSetUintAttribute(AzFilterNodeRef aFilter, uint32_t aIndex, uint32_t aValue);
 void AzFilterNodeSetFloatAttribute(AzFilterNodeRef aFilter, uint32_t aIndex, AzFloat aValue);
 void AzFilterNodeSetColorAttribute(AzFilterNodeRef aFilter,
                                    uint32_t aIndex,
                                    const AzColor *aValue);
+void AzFilterNodeSetMatrixAttribute(AzFilterNodeRef aFilter,
+                                    uint32_t aIndex,
+                                    const AzMatrix *aValue);
 void AzFilterNodeSetMatrix5x4Attribute(AzFilterNodeRef aFilter,
                                        uint32_t aIndex,
                                        const AzMatrix5x4 *aValue);
